@@ -1,11 +1,9 @@
-use std::time::Instant;
+pub use egui;
 
 mod gui;
 mod mandelbrot;
+mod renderer;
 
 fn main() {
-    let start = Instant::now();
     gui::run_gui();
-    mandelbrot::generate_image();
-    println!("Elapsed: {}ms", start.elapsed().as_millis());
 }
