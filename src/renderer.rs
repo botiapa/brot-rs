@@ -34,7 +34,10 @@ fn renderer_loop(
                         height,
                     ))
                     .unwrap();
-                println!("Elapsed: {}ms", start.elapsed().as_millis());
+                println!(
+                    "Generated and sent image in: {}ms",
+                    start.elapsed().as_millis()
+                );
             }
         }
     }

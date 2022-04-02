@@ -1,61 +1,59 @@
 use std::ops::Range;
 
-use angular_units::Turns;
-use image::RgbImage;
+use angular_units::{Deg, Turns};
 use num_complex::Complex;
 use prisma::{FromColor, Hsv, Rgb};
 use rayon::prelude::*;
+use rust_decimal::Decimal;
 
-const MAX_ITER: f32 = 150.0;
+pub type Float = f64;
+const DEFAULT_MAX_ITER: Float = 180.0;
 
 const PIXEL_CHUNK: u32 = 10000;
 
-pub const RE_START: f32 = -2.0; // DEFAULT: -2.0
-pub const RE_END: f32 = 0.5; // DEFAULT: 1.0
-pub const IM_START: f32 = -1.0; // DEFAULT: -1.0
-pub const IM_END: f32 = 1.0; // DEFAULT: 1.0
-
 #[derive(Clone)]
 pub struct FractalProperties {
-    pub re_start: f32,
-    pub re_end: f32,
-    pub im_start: f32,
-    pub im_end: f32,
-    pub scale: f32,
+    pub center_x: Float,
+    pub center_y: Float,
+    pub zoom: Float,
+    pub max_iter: Float,
 }
 
 impl Default for FractalProperties {
     fn default() -> Self {
         Self {
-            re_start: RE_START,
-            re_end: RE_END,
-            im_start: IM_START,
-            im_end: IM_END,
-            scale: 1.0,
+            center_x: 0 as Float,
+            center_y: 0 as Float,
+            zoom: 0.5 as Float,
+            max_iter: DEFAULT_MAX_ITER,
         }
     }
 }
 
-fn mandelbrot(c: Complex<f32>) -> f32 {
-    let mut z = Complex::new(0f32, 0f32);
-    let mut n = 0f32;
-    while z.norm() <= 2.0 && n < MAX_ITER {
-        z = z * z + c;
+fn mandelbrot(c: Complex<Float>, max_iter: Float) -> Float {
+    let mut z = Complex::new(0 as Float, 0 as Float);
+    let mut n = 0 as Float;
+    while z.norm() <= 2.0 && n < max_iter {
+        z = z.powf(2.0) + c;
         n += 1.0;
     }
-    if n != MAX_ITER {
-        return n as f32 + 1.0 - z.norm().log2().log10();
+    if n != max_iter {
+        return n as Float + 1.0 - z.norm().log10().log10() / (2 as Float).log10();
     }
     n
 }
 
-fn map_to_screen_space(x: f32, max_x: f32, min_y: f32, max_y: f32) -> f32 {
-    min_y + (x / max_x) * (max_y - min_y)
+/// Convert a given dimension onto the complex plane the following way:
+/// - Map the position -> `[0;1]`
+/// - Offset the range by `-0.5` essentially centering it (the center becomes 0) -> `[-0.5;0.5]`
+/// - Expand the range -> `[-1;1]`
+/// - Scale the range with the given zoom -> `[-1 / zoom;1 / zoom]`
+/// - Offset the range with the given center point (move the center) -> `[center + (-1 / zoom);center + (1 / zoom)]`
+pub fn map_to_complex_plane(n: Float, max_n: Float, center: Float, zoom: Float) -> Float {
+    center + (((n as Float / max_n as Float) - 0.5) * 2 as Float / zoom)
 }
 
 pub fn generate_image(width: u32, height: u32, fp: FractalProperties) -> Vec<[u8; 3]> {
-    let mut img = RgbImage::new(width, height);
-
     let total_pixels = width * height;
 
     let regions: Vec<[u8; 3]> = (0..total_pixels)
@@ -63,7 +61,7 @@ pub fn generate_image(width: u32, height: u32, fp: FractalProperties) -> Vec<[u8
         .step_by(PIXEL_CHUNK as usize)
         .map(|start| {
             let end = total_pixels.min(start + PIXEL_CHUNK);
-            calculate_region(start..end, img.width(), img.height(), &fp)
+            calculate_region(start..end, width, height, &fp)
         })
         .flatten()
         .collect();
@@ -86,16 +84,22 @@ fn calculate_region(
 }
 
 fn calculate_pixel(x: u32, y: u32, max_x: u32, max_y: u32, fp: &FractalProperties) -> [u8; 3] {
-    let c = Complex::<f32>::new(
-        map_to_screen_space(x as f32, max_x as f32, fp.re_start, fp.re_end) * fp.scale,
-        map_to_screen_space(y as f32, max_y as f32, fp.im_start, fp.im_end) * fp.scale,
-    );
-    let n = mandelbrot(c);
+    let cx = map_to_complex_plane(x as Float, max_x as Float, fp.center_x, fp.zoom);
+    let cy = map_to_complex_plane(y as Float, max_y as Float, fp.center_y, fp.zoom);
+    let c = Complex::<Float>::new(cx, cy);
 
-    let hue = Turns((n as f32 / MAX_ITER as f32).min(0.9999999));
+    let n = mandelbrot(c, fp.max_iter);
 
-    let saturation = 1.0;
-    let value = if n < MAX_ITER { 1.0f32 } else { 0.0f32 };
+    let mut deg = 0.90 + 45.0 * n;
+    while deg > 360.0 {
+        deg -= 360.0;
+    }
+
+    //let hue = Turns((n as f32 / fp.max_iter as f32).min(0.9999999));
+    let hue = Deg(deg);
+
+    let saturation = 0.6;
+    let value = if n < fp.max_iter { 1.0f32 } else { 0.0f32 };
     let hsv = Hsv::new(hue, saturation, value);
     let color = Rgb::from_color(&hsv);
     [

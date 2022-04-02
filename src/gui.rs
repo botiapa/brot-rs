@@ -1,16 +1,19 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
-use self::egui::Ui;
+use std::{
+    thread::{self, sleep},
+    time::{Duration, Instant},
+};
+
 use crossbeam_channel::{Receiver, Sender};
 use eframe::{
     egui,
-    epaint::ImageDelta,
     epi::{App, Frame},
 };
-use egui::{Color32, ColorImage, ImageData, Sense, TextureHandle, TextureId};
+use egui::{Color32, TextureHandle};
 
 use crate::{
-    mandelbrot::{FractalProperties, IM_END, IM_START, RE_END, RE_START},
+    mandelbrot::{map_to_complex_plane, Float, FractalProperties},
     renderer::{renderer_thread, RendererMessage},
 };
 
@@ -43,44 +46,35 @@ impl MyApp {
 impl App for MyApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            /*ui.heading("My egui Application");
-                        ui.horizontal(|ui| {
-                            ui.label("Your name: ");
-                            ui.text_edit_singleline(&mut self.name);
-                        });
-                        ui.add(egui::Slider::new(&mut self.age, 0..=120).text("age"));
-                        if ui.button("Click each year").clicked() {
-                            self.age += 1;
-                        }
-                        ui.label(format!("Hello '{}', age {}", self.name, self.age));
-            */
             ui.horizontal(|ui| {
-                ui.label("im start: ");
-                ui.add(egui::Slider::new(&mut self.fp.im_start, -1.5..=1.5));
-                ui.label("im end: ");
-                ui.add(egui::Slider::new(&mut self.fp.im_end, 0.0..=1.5));
-                ui.label("re start: ");
-                ui.add(egui::Slider::new(&mut self.fp.re_start, -2.5..=2.0));
-                ui.label("re end: ");
-                ui.add(egui::Slider::new(&mut self.fp.re_end, 0.0..=1.5));
-                ui.label("scale: ");
-                ui.add(egui::Slider::new(&mut self.fp.scale, -10.0..=10.0).logarithmic(true));
+                ui.label("x center: ");
+                ui.add(egui::Slider::new(
+                    &mut self.fp.center_x,
+                    -2 as Float..=2 as Float,
+                ));
+                ui.label("y center: ");
+                ui.add(egui::Slider::new(
+                    &mut self.fp.center_y,
+                    -2 as Float..=2 as Float,
+                ));
+                ui.label("zoom: ");
+                ui.add(
+                    egui::Slider::new(&mut self.fp.zoom, 0 as Float..=100000000000.0 as Float)
+                        .logarithmic(true),
+                );
+                ui.label("max iter: ");
+                ui.add(egui::Slider::new(
+                    &mut self.fp.max_iter,
+                    0 as Float..=1000000 as Float,
+                ));
             });
-            let available = ui.available_size();
-
+            let (width, height) = (1000, 1000);
             if ui.button("click_me").clicked() {
-                self.renderer_sender
-                    .send(RendererMessage::RenderCommand(
-                        1280 as u32,
-                        720 as u32,
-                        self.fp.clone(),
-                    ))
-                    .unwrap();
+                self.refresh_img(width, height);
             }
             if let Ok(msg) = self.gui_receiver.try_recv() {
-                println!("Received");
                 if let RendererMessage::RenderedImage(img, width, height) = msg {
-                    println!("Received rendered image");
+                    let start = Instant::now();
                     let arr = img
                         .iter()
                         .map(|x| Color32::from_rgb(x[0], x[1], x[2]))
@@ -94,7 +88,8 @@ impl App for MyApp {
                     }
                     let txt = ui.ctx().load_texture("0", color_img);
                     self.img_handle.replace(txt);
-                    println!("Replaced img handle");
+                    println!("Rendered image in: {}ms", start.elapsed().as_millis());
+                    ctx.request_repaint();
                 } else {
                     panic!("Received invalid renderer message");
                 }
@@ -102,7 +97,7 @@ impl App for MyApp {
 
             if self.img_handle.is_none() {
                 self.img_handle = Some(ui.ctx().load_texture("0", egui::ColorImage::example()));
-                println!("Example img");
+                self.refresh_img(width, height);
             }
 
             let img = ui.add(
@@ -115,26 +110,24 @@ impl App for MyApp {
 
             if img.clicked() {
                 let mut loc = img.interact_pointer_pos().unwrap();
-                loc.x -= img
-                    .rect
-                    .left()
-                    .max(0f32)
-                    .min(self.img_handle.as_ref().unwrap().size()[0] as f32);
-                loc.y -= img
-                    .rect
-                    .top()
-                    .max(0f32)
-                    .min(self.img_handle.as_ref().unwrap().size()[1] as f32);
-                let center = (
-                    (loc.x / self.img_handle.as_ref().unwrap().size()[0] as f32) - 0.5,
-                    (loc.y / self.img_handle.as_ref().unwrap().size()[1] as f32) - 0.5,
+                loc.x -= img.rect.left().max(0f32).min(width as f32);
+                loc.y -= img.rect.top().max(0f32).min(height as f32);
+                // Calculate clicked point on the complex plane
+                self.fp.center_x = map_to_complex_plane(
+                    loc.x as Float,
+                    width as Float,
+                    self.fp.center_x,
+                    self.fp.zoom,
                 );
-                println!(
-                    "loc: {:?} x:{} y:{}",
-                    center,
-                    img.rect.left(),
-                    img.rect.top()
+                self.fp.center_y = map_to_complex_plane(
+                    loc.y as Float,
+                    height as Float,
+                    self.fp.center_y,
+                    self.fp.zoom,
                 );
+                self.fp.zoom *= 2 as Float;
+                println!("{}", self.fp.zoom);
+                self.refresh_img(width, height);
             }
         });
 
@@ -144,25 +137,13 @@ impl App for MyApp {
 }
 
 impl MyApp {
-    fn custom_painting(&self, ui: &mut Ui) {
-        let (rect, response) =
-            ui.allocate_exact_size(egui::Vec2::splat(300.0), egui::Sense::drag());
-
-        // Clone locals so we can move them into the paint callback:
-
-        let callback = egui::PaintCallback {
-            rect,
-            callback: std::sync::Arc::new(move |_info, render_ctx| {
-                /*if let Some(painter) = render_ctx.downcast_mut::<egui_glow::Painter>() {
-                    let img = ColorImage::example();
-                    let img = ImageData::Color(img);
-                    let delta = ImageDelta::full(img);
-                    painter.set_texture(TextureId::User(0), &delta);
-                } else {
-                    eprintln!("Can't do custom painting because we are not using a glow context");
-                }*/
-            }),
-        };
-        ui.painter().add(callback);
+    fn refresh_img(&self, width: u32, height: u32) {
+        self.renderer_sender
+            .send(RendererMessage::RenderCommand(
+                width as u32,
+                height as u32,
+                self.fp.clone(),
+            ))
+            .unwrap();
     }
 }
