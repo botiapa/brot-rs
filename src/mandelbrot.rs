@@ -1,4 +1,4 @@
-use std::ops::Range;
+use std::{f64::consts::PI, ops::Range};
 
 use angular_units::{Deg, Turns};
 use num_complex::Complex;
@@ -17,6 +17,7 @@ pub struct FractalProperties {
     pub center_y: Float,
     pub zoom: Float,
     pub max_iter: Float,
+    pub ss_factor: usize,
 }
 
 impl Default for FractalProperties {
@@ -26,6 +27,7 @@ impl Default for FractalProperties {
             center_y: 0 as Float,
             zoom: 0.5 as Float,
             max_iter: DEFAULT_MAX_ITER,
+            ss_factor: 1,
         }
     }
 }
@@ -56,6 +58,7 @@ pub fn map_to_complex_plane(n: Float, max_n: Float, center: Float, zoom: Float) 
 pub fn generate_image(width: u32, height: u32, fp: FractalProperties) -> Vec<[u8; 3]> {
     let total_pixels = width * height;
 
+    println!("max_iter: {}", fp.max_iter);
     let regions: Vec<[u8; 3]> = (0..total_pixels)
         .into_par_iter()
         .step_by(PIXEL_CHUNK as usize)
@@ -78,24 +81,33 @@ fn calculate_region(
     for i in &mut pixel_range {
         let x = i % max_x;
         let y = i / max_x;
-        pixels.push(calculate_pixel(x, y, max_x, max_y, fp));
+        pixels.push(calculate_pixel(x as Float, y as Float, max_x, max_y, fp));
     }
     pixels
 }
 
-fn calculate_pixel(x: u32, y: u32, max_x: u32, max_y: u32, fp: &FractalProperties) -> [u8; 3] {
-    let cx = map_to_complex_plane(x as Float, max_x as Float, fp.center_x, fp.zoom);
-    let cy = map_to_complex_plane(y as Float, max_y as Float, fp.center_y, fp.zoom);
-    let c = Complex::<Float>::new(cx, cy);
+fn calculate_pixel(x: Float, y: Float, max_x: u32, max_y: u32, fp: &FractalProperties) -> [u8; 3] {
+    // Supersample the image with the given supersample factor
+    let mut vec: Vec<Float> = vec![];
+    for u in 0..fp.ss_factor {
+        for v in 0..fp.ss_factor {
+            let x = x as Float + u as Float / fp.ss_factor as Float;
+            let y = y as Float + v as Float / fp.ss_factor as Float;
+            let cx = map_to_complex_plane(x as Float, max_x as Float, fp.center_x, fp.zoom);
+            let cy = map_to_complex_plane(y as Float, max_y as Float, fp.center_y, fp.zoom);
+            let c = Complex::<Float>::new(cx, cy);
+            let n = mandelbrot(c, fp.max_iter);
+            vec.push(n);
+        }
+    }
 
-    let n = mandelbrot(c, fp.max_iter);
+    let n: f64 = vec.iter().sum::<f64>() / vec.len() as f64;
 
-    let mut deg = 0.90 + 45.0 * n;
+    let mut deg = 0.90 + 10.0 * n;
     while deg > 360.0 {
         deg -= 360.0;
     }
 
-    //let hue = Turns((n as f32 / fp.max_iter as f32).min(0.9999999));
     let hue = Deg(deg);
 
     let saturation = 0.6;
