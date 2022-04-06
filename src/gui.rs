@@ -33,6 +33,7 @@ struct MyApp {
     img_data: Option<Vec<[u8; 3]>>,
     fp: FractalProperties,
     video_render: Option<VideoRender>,
+    render_algorithm: AlgorithmType,
 }
 
 struct VideoRender {
@@ -62,6 +63,7 @@ impl MyApp {
             img_data: None,
             fp: FractalProperties::default(),
             video_render: None,
+            render_algorithm: AlgorithmType::NaiveCPU,
         }
     }
 }
@@ -69,6 +71,8 @@ impl MyApp {
 impl App for MyApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
+            let (width, height) = (1280, 720);
+
             if self.video_render.is_none() {
                 ui.horizontal(|ui| {
                     ui.label("x center: ");
@@ -96,10 +100,30 @@ impl App for MyApp {
                     ));
                     ui.label("ss factor: ");
                     ui.add(egui::Slider::new(&mut self.fp.ss_factor, 1..=32));
+
+                    let alg_was = self.render_algorithm.clone();
+                    egui::ComboBox::from_label("Renderer")
+                        .selected_text(format!("{:?}", self.render_algorithm))
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(
+                                &mut self.render_algorithm,
+                                AlgorithmType::NaiveCPU,
+                                "NaiveCPU",
+                            );
+                            #[cfg(feature = "opencl")]
+                            ui.selectable_value(
+                                &mut self.render_algorithm,
+                                AlgorithmType::OpenCL,
+                                "OpenCL",
+                            );
+                        });
+
+                    if alg_was != self.render_algorithm {
+                        self.refresh_img(width, height);
+                    }
                 });
             }
 
-            let (width, height) = (1280, 720);
             if self.video_render.is_none() && ui.button("Render").clicked() {
                 self.refresh_img(width, height);
             }
@@ -212,7 +236,7 @@ impl MyApp {
             .send(RendererMessage::RenderCommand(
                 width as u32,
                 height as u32,
-                AlgorithmType::NaiveCPU,
+                self.render_algorithm.clone(),
                 self.fp.clone(),
             ))
             .unwrap();

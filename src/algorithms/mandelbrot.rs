@@ -23,8 +23,10 @@ impl Default for FractalProperties {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum AlgorithmType {
     NaiveCPU,
+    #[cfg(feature = "opencl")]
     OpenCL,
 }
 

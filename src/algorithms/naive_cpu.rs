@@ -23,6 +23,20 @@ fn mandelbrot(c: Complex<Float>, max_iter: Float) -> Float {
     n
 }
 
+fn mandelbrot_bruh(x0: f64, y0: f64, max_iter: Float) -> Float {
+    let mut x = 0.0;
+    let mut y = 0.0;
+    let mut iteration = 0;
+
+    while x * x + y * y < 2.0 * 2.0 && iteration < 180 {
+        let xtemp = x * x - y * y + x0;
+        y = 2.0 * x * y + y0;
+        x = xtemp;
+        iteration += 1;
+    }
+    iteration as Float
+}
+
 fn calculate_region(
     mut pixel_range: Range<u32>,
     max_x: u32,
