@@ -14,7 +14,7 @@ use egui::{Color32, TextureHandle};
 use image::{GenericImage, ImageBuffer, Pixel};
 
 use crate::{
-    mandelbrot::{map_to_complex_plane, Float, FractalProperties},
+    algorithms::mandelbrot::{map_to_complex_plane, AlgorithmType, Float, FractalProperties},
     renderer::{renderer_thread, RendererMessage},
 };
 
@@ -212,6 +212,7 @@ impl MyApp {
             .send(RendererMessage::RenderCommand(
                 width as u32,
                 height as u32,
+                AlgorithmType::NaiveCPU,
                 self.fp.clone(),
             ))
             .unwrap();

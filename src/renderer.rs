@@ -2,10 +2,10 @@ use std::{thread, time::Instant};
 
 use crossbeam_channel::{unbounded, Receiver, Sender};
 
-use crate::mandelbrot::{generate_image, FractalProperties};
+use crate::algorithms::mandelbrot::{AlgorithmType, FractalProperties};
 
 pub enum RendererMessage {
-    RenderCommand(u32, u32, FractalProperties),
+    RenderCommand(u32, u32, AlgorithmType, FractalProperties),
     RenderedImage(Vec<[u8; 3]>, u32, u32),
 }
 
@@ -25,14 +25,14 @@ fn renderer_loop(
 ) {
     loop {
         for cmd in &renderer_receiver {
-            if let RendererMessage::RenderCommand(width, height, fp) = cmd {
+            if let RendererMessage::RenderCommand(width, height, algorithm, fp) = cmd {
                 let start = Instant::now();
+                let img = match algorithm {
+                    AlgorithmType::NaiveCPU => NaiveCPU::generate_image(width, height, fp),
+                    AlgorithmType::OpenCL => OpenCL::generate_image(width, height, fp),
+                };
                 gui_sender
-                    .send(RendererMessage::RenderedImage(
-                        generate_image(width, height, fp),
-                        width,
-                        height,
-                    ))
+                    .send(RendererMessage::RenderedImage(img, width, height))
                     .unwrap();
                 println!(
                     "Generated and sent image in: {}ms",

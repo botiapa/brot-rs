@@ -1,7 +1,7 @@
 pub use egui;
 
+mod algorithms;
 mod gui;
-mod mandelbrot;
 mod renderer;
 
 fn main() {
