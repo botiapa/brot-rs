@@ -9,6 +9,8 @@ pub struct FractalProperties {
     pub zoom: Float,
     pub max_iter: Float,
     pub ss_factor: usize,
+    pub color_offset: Float,
+    pub color_saturation: Float,
 }
 
 impl Default for FractalProperties {
@@ -19,6 +21,8 @@ impl Default for FractalProperties {
             zoom: 0.5 as Float,
             max_iter: DEFAULT_MAX_ITER,
             ss_factor: 1,
+            color_offset: 10.0,
+            color_saturation: 0.6,
         }
     }
 }

@@ -124,23 +124,32 @@ impl App for MyApp {
                 });
             }
 
-            if self.video_render.is_none() && ui.button("Render").clicked() {
-                self.refresh_img(width, height);
-            }
-
-            if self.video_render.is_none() && ui.button("Save").clicked() && self.img_data.is_some()
-            {
-                self.save_img(width, height, "output.bmp");
-            }
-
-            if ui.button("Render video").clicked() {
-                if self.video_render.is_none() {
-                    self.video_render = Some(VideoRender::default());
+            ui.horizontal(|ui| {
+                if self.video_render.is_none() && ui.button("Render").clicked() {
                     self.refresh_img(width, height);
-                } else {
-                    self.video_render = None;
                 }
-            }
+
+                if self.video_render.is_none()
+                    && ui.button("Save image").clicked()
+                    && self.img_data.is_some()
+                {
+                    self.save_img(width, height, "screenshot.bmp");
+                }
+
+                if ui.button("Render video").clicked() {
+                    if self.video_render.is_none() {
+                        self.video_render = Some(VideoRender::default());
+                        self.refresh_img(width, height);
+                    } else {
+                        self.video_render = None;
+                    }
+                }
+
+                ui.label("Color offset:");
+                ui.add(egui::Slider::new(&mut self.fp.color_offset, 1.0..=360.0));
+                ui.label("Saturation:");
+                ui.add(egui::Slider::new(&mut self.fp.color_saturation, 0.1..=1.0));
+            });
 
             if let Ok(msg) = self.gui_receiver.try_recv() {
                 if let RendererMessage::RenderedImage(img, width, height) = msg {
@@ -214,7 +223,6 @@ impl App for MyApp {
                     self.fp.zoom,
                 );
                 self.fp.zoom *= 2 as Float;
-                println!("{}", self.fp.zoom);
                 self.refresh_img(width, height);
             }
         });

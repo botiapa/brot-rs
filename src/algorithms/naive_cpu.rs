@@ -23,20 +23,6 @@ fn mandelbrot(c: Complex<Float>, max_iter: Float) -> Float {
     n
 }
 
-fn mandelbrot_bruh(x0: f64, y0: f64, max_iter: Float) -> Float {
-    let mut x = 0.0;
-    let mut y = 0.0;
-    let mut iteration = 0;
-
-    while x * x + y * y < 2.0 * 2.0 && iteration < 180 {
-        let xtemp = x * x - y * y + x0;
-        y = 2.0 * x * y + y0;
-        x = xtemp;
-        iteration += 1;
-    }
-    iteration as Float
-}
-
 fn calculate_region(
     mut pixel_range: Range<u32>,
     max_x: u32,
@@ -84,16 +70,16 @@ fn calculate_pixel(x: Float, y: Float, max_x: u32, max_y: u32, fp: &FractalPrope
 
     let n: f64 = vec.iter().sum::<f64>() / vec.len() as f64;
 
-    let mut deg = 0.90 + 10.0 * n;
+    let mut deg = 0.90 + fp.color_offset * n;
     while deg > 360.0 {
         deg -= 360.0;
     }
 
     let hue = Deg(deg);
 
-    let saturation = 0.6;
+    let saturation = fp.color_saturation;
     let value = if n < fp.max_iter { 1.0f32 } else { 0.0f32 };
-    let hsv = Hsv::new(hue, saturation, value);
+    let hsv = Hsv::new(hue, saturation, value.into());
     let color = Rgb::from_color(&hsv);
     [
         (color.red() * 255.0) as u8,

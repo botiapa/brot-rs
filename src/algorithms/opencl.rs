@@ -15,14 +15,17 @@ __kernel void mandelbrot(__global double2* src_buffer, __global double* buffer, 
     double y0 = src_buffer[get_global_id(0)].y;
     double x = 0.0;
     double y = 0.0;
-    long iteration = 0;
+    double iteration = 0.0;
     while (x*x + y*y < 2.0*2.0 && iteration < max_iter) {
         double xtemp = x*x - y*y + x0;
         y = 2*x*y + y0;
         x = xtemp;
         iteration++;
     }
-
+    if(iteration != max_iter) {
+        buffer[get_global_id(0)] = iteration + 1.0 - log10(log10(sqrt(pown(x,2) + pown(y,2)))) / log10(2.0);
+        return;
+    }
     buffer[get_global_id(0)] = iteration;
 }
 "#;
@@ -52,13 +55,22 @@ impl OpenCLRenderer {
     ) -> Result<Vec<[u8; 3]>, String> {
         let total_pixels = width * height;
 
-        let mut src_buffer = vec![[0.0f64, 0.0f64]; width as usize * height as usize];
+        let mut src_buffer =
+            vec![[0.0f64, 0.0f64]; width as usize * height as usize * fp.ss_factor.pow(2)];
         for x in 0..width {
             for y in 0..height {
-                let cx = map_to_complex_plane(x as Float, width as Float, fp.center_x, fp.zoom);
-                let cy = map_to_complex_plane(y as Float, height as Float, fp.center_y, fp.zoom);
-                src_buffer[y as usize * width as usize + x as usize][0] = cx;
-                src_buffer[y as usize * width as usize + x as usize][1] = cy;
+                for u in 0..fp.ss_factor {
+                    for v in 0..fp.ss_factor {
+                        let x = x as Float + u as Float / fp.ss_factor as Float;
+                        let y = y as Float + v as Float / fp.ss_factor as Float;
+                        let cx =
+                            map_to_complex_plane(x as Float, width as Float, fp.center_x, fp.zoom);
+                        let cy =
+                            map_to_complex_plane(y as Float, height as Float, fp.center_y, fp.zoom);
+                        src_buffer[(y as usize + u) * width as usize + (x as usize + u)][0] = cx;
+                        src_buffer[(y as usize + v) * width as usize + (x as usize + u)][1] = cy;
+                    }
+                }
             }
         }
         let src_slice: &mut [Double2] = unsafe {
@@ -67,16 +79,17 @@ impl OpenCLRenderer {
 
         // Width and height changed, rebuild needed
         if self.pro_que.is_none()
-            || self.pro_que.as_ref().unwrap().dims().to_len() != width as usize * height as usize
+            || self.pro_que.as_ref().unwrap().dims().to_len()
+                != width as usize * height as usize * fp.ss_factor
         {
             println!("Rebuilt OpenCL pro_que");
-            self.build(width, height)?;
+            self.build(width, height, fp.ss_factor).expect("bruhhh");
         }
 
         // TODO: The buffer should support complexes directly...
         let src_buffer = Buffer::<Double2>::builder()
             .queue(self.pro_que.as_ref().unwrap().queue().clone())
-            .len(width * height)
+            .len(width * height * fp.ss_factor.pow(2) as u32)
             .copy_host_slice(src_slice)
             .build()?;
 
@@ -97,34 +110,48 @@ impl OpenCLRenderer {
         self.buffer.as_ref().unwrap().read(&mut vec).enq()?;
         println!("Elapsed inner: {}ms", start.elapsed().as_millis());
 
-        let img: Vec<[u8; 3]> = vec
-            .iter()
-            .map(|n| {
-                let mut deg = 0.90 + 10.0 * n;
+        let mut img: Vec<[u8; 3]> = vec![[0, 0, 0]; width as usize * height as usize];
+        for x in 0..width {
+            for y in 0..height {
+                let mut sum = 0.0;
+                for u in 0..fp.ss_factor {
+                    for v in 0..fp.ss_factor {
+                        sum += vec[(y as usize + v) * width as usize + (x as usize + u)];
+                    }
+                }
+                let mut n = sum / fp.ss_factor as f64;
+
+                let mut deg = 0.90 + fp.color_offset * (n as f64);
                 while deg > 360.0 {
                     deg -= 360.0;
                 }
 
                 let hue = Deg(deg);
 
-                let saturation = 0.6;
-                let value = if *n < fp.max_iter { 1.0f32 } else { 0.0f32 };
-                let hsv = Hsv::new(hue, saturation, value);
+                let saturation = fp.color_saturation;
+                let value = if (n as f64) < fp.max_iter {
+                    1.0f32
+                } else {
+                    0.0f32
+                };
+                let hsv = Hsv::new(hue, saturation, value.into());
                 let color = Rgb::from_color(&hsv);
-                [
+
+                img[y as usize * width as usize + x as usize] = [
                     (color.red() * 255.0) as u8,
                     (color.green() * 255.0) as u8,
                     (color.blue() * 255.0) as u8,
                 ]
-            })
-            .collect();
+            }
+        }
+
         Ok(img)
     }
 
-    fn build(&mut self, width: u32, height: u32) -> Result<(), String> {
+    fn build(&mut self, width: u32, height: u32, ss_scale: usize) -> Result<(), String> {
         let pro_que = ProQue::builder()
             .src(MANDELBROT_SRC)
-            .dims(width * height)
+            .dims(width * height * (ss_scale as u32).pow(2))
             .build()?;
 
         self.buffer = Some(pro_que.create_buffer::<f64>()?);
