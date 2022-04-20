@@ -1,17 +1,23 @@
+use ocl::OclPrm;
+
 pub type Float = f64;
 
 const DEFAULT_MAX_ITER: Float = 180.0;
 
-#[derive(Clone)]
+#[derive(Copy, Clone, PartialEq, Debug)]
+#[repr(C)]
 pub struct FractalProperties {
     pub center_x: Float,
     pub center_y: Float,
     pub zoom: Float,
     pub max_iter: Float,
-    pub ss_factor: usize,
+    pub ss_factor: i32,
     pub color_offset: Float,
     pub color_saturation: Float,
 }
+
+#[cfg(feature = "opencl")]
+unsafe impl OclPrm for FractalProperties {}
 
 impl Default for FractalProperties {
     fn default() -> Self {
@@ -41,5 +47,5 @@ pub enum AlgorithmType {
 /// - Scale the range with the given zoom -> `[-1 / zoom;1 / zoom]`
 /// - Offset the range with the given center point (move the center) -> `[center + (-1 / zoom);center + (1 / zoom)]`
 pub fn map_to_complex_plane(n: Float, max_n: Float, center: Float, zoom: Float) -> Float {
-    center + (((n as Float / max_n as Float) - 0.5) * 2 as Float / zoom)
+    center + (((n / max_n) - 0.5) * 2 as Float / zoom)
 }

@@ -1,12 +1,11 @@
-use std::{f64::consts::PI, ops::Range};
-
-use angular_units::{Deg, Turns};
 use num_complex::Complex;
-use prisma::{FromColor, Hsv, Rgb};
 use rayon::prelude::*;
-use rust_decimal::Decimal;
+use std::ops::Range;
 
-use super::mandelbrot::{map_to_complex_plane, Float, FractalProperties};
+use super::{
+    coloring::calculate_pixel_color,
+    mandelbrot::{map_to_complex_plane, Float, FractalProperties},
+};
 
 const PIXEL_CHUNK: u32 = 10000;
 
@@ -27,7 +26,7 @@ fn calculate_region(
     mut pixel_range: Range<u32>,
     max_x: u32,
     max_y: u32,
-    fp: &FractalProperties,
+    fp: FractalProperties,
 ) -> Vec<[u8; 3]> {
     let mut pixels: Vec<[u8; 3]> = Vec::new();
     for i in &mut pixel_range {
@@ -46,14 +45,14 @@ pub fn generate_image(width: u32, height: u32, fp: FractalProperties) -> Vec<[u8
         .step_by(PIXEL_CHUNK as usize)
         .map(|start| {
             let end = total_pixels.min(start + PIXEL_CHUNK);
-            calculate_region(start..end, width, height, &fp)
+            calculate_region(start..end, width, height, fp)
         })
         .flatten()
         .collect();
     regions
 }
 
-fn calculate_pixel(x: Float, y: Float, max_x: u32, max_y: u32, fp: &FractalProperties) -> [u8; 3] {
+fn calculate_pixel(x: Float, y: Float, max_x: u32, max_y: u32, fp: FractalProperties) -> [u8; 3] {
     // Supersample the image with the given supersample factor
     let mut vec: Vec<Float> = vec![];
     for u in 0..fp.ss_factor {
@@ -70,20 +69,5 @@ fn calculate_pixel(x: Float, y: Float, max_x: u32, max_y: u32, fp: &FractalPrope
 
     let n: f64 = vec.iter().sum::<f64>() / vec.len() as f64;
 
-    let mut deg = 0.90 + fp.color_offset * n;
-    while deg > 360.0 {
-        deg -= 360.0;
-    }
-
-    let hue = Deg(deg);
-
-    let saturation = fp.color_saturation;
-    let value = if n < fp.max_iter { 1.0f32 } else { 0.0f32 };
-    let hsv = Hsv::new(hue, saturation, value.into());
-    let color = Rgb::from_color(&hsv);
-    [
-        (color.red() * 255.0) as u8,
-        (color.green() * 255.0) as u8,
-        (color.blue() * 255.0) as u8,
-    ]
+    calculate_pixel_color(fp, n)
 }
