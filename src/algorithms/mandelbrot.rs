@@ -1,3 +1,4 @@
+#[cfg(feature = "opencl")]
 use ocl::OclPrm;
 
 pub type Float = f64;

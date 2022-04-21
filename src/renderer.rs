@@ -4,9 +4,11 @@ use crossbeam_channel::{unbounded, Receiver, Sender};
 
 use crate::algorithms::{
     mandelbrot::{AlgorithmType, FractalProperties},
-    opencl::OpenCLRenderer,
     *,
 };
+
+#[cfg(feature = "opencl")]
+use crate::algorithms::opencl::OpenCLRenderer;
 
 pub enum RendererMessage {
     RenderCommand(u32, u32, AlgorithmType, FractalProperties),

@@ -86,8 +86,8 @@ impl MyApp {
 impl App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            let (width, height) = (7680, 4320);
-            let (scaled_width, scaled_height) = (1920, 1080);
+            let (width, height) = (1280, 720);
+            let (scaled_width, scaled_height) = (1280, 720);
 
             assert!(width >= scaled_width && height >= scaled_height);
 
