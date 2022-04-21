@@ -9,7 +9,7 @@ use super::{
 
 const PIXEL_CHUNK: u32 = 10000;
 
-fn mandelbrot(c: Complex<Float>, max_iter: Float) -> Float {
+pub fn mandelbrot(c: Complex<Float>, max_iter: Float) -> Float {
     let mut z = Complex::new(0 as Float, 0 as Float);
     let mut n = 0 as Float;
     while z.norm() <= 2.0 && n < max_iter {
