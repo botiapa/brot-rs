@@ -19,6 +19,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a13739d7177fbd22bb0ed28badfff9f372f8bef46c863db4e1c6248f6b223b6e"
 
 [[package]]
+name = "ac-ffmpeg"
+version = "0.17.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4db645ca3c8b3c0ea6a88d1f52e8bbb635d929daa9181ef10c3ab562178665d2"
+dependencies = [
+ "cc",
+ "lazy_static",
+ "pkg-config",
+]
+
+[[package]]
 name = "addr2line"
 version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -244,6 +255,7 @@ checksum = "0d8c1fef690941d3e7788d328517591fecc684c084084702d6ff1641e993699a"
 name = "brot-rs"
 version = "0.1.0"
 dependencies = [
+ "ac-ffmpeg",
  "angular-units",
  "crossbeam-channel 0.5.4",
  "eframe",
