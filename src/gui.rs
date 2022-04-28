@@ -11,21 +11,16 @@ use eframe::{
     epi::{App, Frame},
 };
 use egui::{Color32, TextureHandle};
-use fontdue::{
-    layout::{Layout, LayoutSettings, TextStyle},
-    Font,
-};
 use image::{imageops::FilterType, ImageBuffer};
 
 use crate::{
     algorithms::mandelbrot::{map_to_complex_plane, AlgorithmType, Float, FractalProperties},
     renderer::{renderer_thread, RendererMessage},
+    video_renderer::VideoRender,
 };
 
 /// Split up every rendered frame into scaled sub-frames
 const FRAMES_PER_IMG: usize = 1;
-
-const FONT_DATA: &[u8] = include_bytes!("../font.ttf");
 
 pub fn run_gui() {
     let (renderer_sender, gui_receiver) = renderer_thread();
@@ -43,27 +38,6 @@ struct MyApp {
     fp: FractalProperties,
     video_render: Option<VideoRender>,
     render_algorithm: AlgorithmType,
-}
-
-struct VideoRender {
-    current_frame: u32,
-    max_zoom: Float,
-    render_started: Instant,
-    font: Font,
-    layout: Layout,
-}
-
-impl Default for VideoRender {
-    fn default() -> Self {
-        Self {
-            current_frame: 0,
-            max_zoom: 10000000000.0,
-            render_started: Instant::now(),
-            font: fontdue::Font::from_bytes(FONT_DATA, fontdue::FontSettings::default())
-                .expect("Failed loading in font"),
-            layout: Layout::new(fontdue::layout::CoordinateSystem::PositiveYDown),
-        }
-    }
 }
 
 impl MyApp {
@@ -177,16 +151,21 @@ impl App for MyApp {
             if let Ok(msg) = self.gui_receiver.try_recv() {
                 if let RendererMessage::RenderedImage(img_data, width, height) = msg {
                     self.img_data = Some(img_data);
-                    if let Some(vr) = &self.video_render {
+                    if let Some(vr) = &mut self.video_render {
                         // Video is finished
-                        if self.fp.zoom >= vr.max_zoom {
+                        if vr.finished() {
                             let vr = self.video_render.take().unwrap();
                             println!(
                                 "Finished rendering the video in: {}s",
-                                vr.render_started.elapsed().as_secs()
+                                vr.render_time().as_secs()
                             );
                         } else {
-                            self.advance_video_frame(width, height);
+                            vr.advance_video_frame(
+                                &mut self.fp.zoom,
+                                self.img_data.as_ref().unwrap(),
+                                width,
+                                height,
+                            );
                         }
                     } else {
                         let rendering_timer = Instant::now();

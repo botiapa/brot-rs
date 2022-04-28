@@ -1,21 +1,49 @@
-struct VideoRender {}
+const FONT_DATA: &[u8] = include_bytes!("../font.ttf");
+
+pub struct VideoRender {
+    pub current_frame: u32,
+    pub max_zoom: f64,
+    pub render_started: Instant,
+    pub font: Font,
+    pub layout: Layout,
+    pub rendering_finished: Option<Instant>,
+}
+
+impl Default for VideoRender {
+    fn default() -> Self {
+        Self {
+            current_frame: Default::default(),
+            max_zoom: Default::default(),
+            render_started: Instant::now(),
+            font: Font::from_bytes(FONT_DATA, FontSettings::default()).unwrap(),
+            layout: Layout::new(fontdue::layout::CoordinateSystem::PositiveYDown),
+            rendering_finished: None,
+        }
+    }
+}
 
 impl VideoRender {
-    fn advance_video_frame(&mut self, width: u32, height: u32) {
+    pub fn advance_video_frame(
+        &mut self,
+        zoom: &mut f64,
+        img_data: &Vec<[u8; 3]>,
+        width: u32,
+        height: u32,
+    ) {
         let mut img = ImageBuffer::from_fn(width, height, |x, y| {
-            image::Rgb(self.img_data.as_ref().unwrap()[(y * width + x) as usize])
+            image::Rgb(img_data[(y * width + x) as usize])
         });
 
         let text_timer = Instant::now();
         // TEXT
         const FONT_SIZE: f32 = 50.0;
-        vr.layout.append(
-            &[&vr.font],
-            &TextStyle::new(&self.fp.zoom.round().to_string(), FONT_SIZE, 0),
+        self.layout.append(
+            &[&self.font],
+            &TextStyle::new(&zoom.round().to_string(), FONT_SIZE, 0),
         );
-        for glyph in vr.layout.glyphs() {
+        for glyph in self.layout.glyphs() {
             if glyph.char_data.rasterize() {
-                let (metrics, bmp) = vr.font.rasterize(glyph.parent, FONT_SIZE);
+                let (metrics, bmp) = self.font.rasterize(glyph.parent, FONT_SIZE);
                 for (i, p) in bmp.iter().enumerate() {
                     // Skip black pixels
                     if p == &255 {
@@ -26,19 +54,30 @@ impl VideoRender {
                 }
             }
         }
-        vr.layout.reset(&LayoutSettings::default());
+        self.layout.reset(&LayoutSettings::default());
         println!(
             "Rendering text took: {}ms",
             text_timer.elapsed().as_millis()
         );
 
-        img.save(&format!("O:\\tmp\\video{}.bmp", vr.current_frame))
+        img.save(&format!("O:\\tmp\\video{}.bmp", self.current_frame))
             .expect("Failed saving video frame");
-        vr.current_frame += 1;
+        self.current_frame += 1;
 
-        self.fp.zoom *= 1.05;
+        if *zoom >= self.max_zoom {
+            self.rendering_finished = Some(Instant::now());
+        }
 
-        self.refresh_img(width, height);
+        *zoom *= 1.05;
+    }
+
+    /// Has the rendering been finished
+    pub fn finished(&self) -> bool {
+        self.rendering_finished.is_some()
+    }
+
+    pub fn render_time(&self) -> Duration {
+        self.render_started - self.rendering_finished.unwrap()
     }
 }
 
@@ -102,3 +141,11 @@ impl VideoRender {
 
     self.fp.zoom = next_zoom;
 }*/
+
+use std::time::{Duration, Instant};
+
+use fontdue::{
+    layout::{Layout, LayoutSettings, TextStyle},
+    Font, FontSettings,
+};
+use image::ImageBuffer;
